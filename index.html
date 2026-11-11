@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GHN Project Tracker</title>
+  <meta name="description" content="Theo dõi tiến độ dự án Kho – GHN">
+  <link rel="icon" type="image/png" href="assets/img/ghn-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    try { var t = localStorage.getItem('ghn-pt-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#/">
+        <img src="assets/img/ghn-logo.png" alt="GHN">
+        <div>
+          <div class="brand-title">Project Tracker</div>
+          <div class="brand-sub">Your loads. Our roads.</div>
+        </div>
+      </a>
+      <div class="side-section">
+        <a class="nav-item" href="#/" id="navDashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Tổng quan dự án
+        </a>
+        <button class="nav-item" data-action="new-project">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Tạo dự án mới
+        </button>
+      </div>
+      <div class="side-label" style="padding-left:20px;padding-right:14px">
+        <span>Dự án</span>
+        <button class="btn btn-ghost btn-sm" data-action="toggle-sort" id="sortBtn" title="Đổi thứ tự sắp xếp"></button>
+      </div>
+      <div class="side-search">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input class="input" id="projectSearch" type="search" placeholder="Tìm dự án…" aria-label="Tìm dự án">
+        </div>
+      </div>
+      <nav class="project-list" id="projectList" aria-label="Danh sách dự án"></nav>
+      <div class="side-footer">
+        <div class="save-state" id="saveState">Dữ liệu lưu tự động trên trình duyệt</div>
+        <button class="btn btn-sm" data-action="export-all" title="Sao lưu toàn bộ dữ liệu (JSON)">Sao lưu</button>
+        <button class="btn btn-sm" data-action="import" title="Khôi phục từ file JSON">Khôi phục</button>
+        <button class="btn btn-sm btn-ghost" data-action="toggle-theme" id="themeBtn" title="Đổi giao diện sáng/tối">Giao diện</button>
+        <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+      </div>
+    </aside>
+    <div class="overlay" data-action="close-nav"></div>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" data-action="open-nav" aria-label="Mở menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="crumbs" id="crumbs"></div>
+        <span class="spacer"></span>
+        <span class="muted hide-sm tnum" id="todayLabel" style="font-size:12.5px"></span>
+        <button class="btn btn-sm btn-ghost hide-sm" data-action="print">In / PDF</button>
+      </header>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div id="modalRoot"></div>
+
+  <script src="assets/js/seed.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
