@@ -16,12 +16,24 @@ Trang web theo dõi tiến độ dự án Kho, giao diện theo tông màu GHN. 
 
 ## Lưu trữ dữ liệu
 
-Dữ liệu được **lưu tự động trong trình duyệt** (localStorage) của từng máy:
+| Cách chạy | Dữ liệu |
+|---|---|
+| **Vercel + Upstash Redis** | Lưu trên máy chủ, **mọi người dùng chung**. Thay đổi của người khác tự hiện sau khoảng 15 giây. Nếu hai người sửa cùng lúc, hệ thống tự gộp theo từng dự án. |
+| GitHub Pages / mở file trực tiếp | Lưu trong trình duyệt của từng máy. Chia sẻ bằng **Sao lưu / Khôi phục** (file `.json`). |
 
-- Dùng **Sao lưu** để tải file `.json`, và **Khôi phục** để nạp lại trên máy khác hoặc chia sẻ cho đồng nghiệp.
-- Xóa dữ liệu duyệt web sẽ mất dữ liệu, nên hãy sao lưu định kỳ.
+## Triển khai lên Vercel (dữ liệu dùng chung)
 
-## Chạy
+1. Vào <https://vercel.com>, đăng nhập bằng **Continue with GitHub**.
+2. Chọn **Add New… → Project**, chọn repo `ghn-project-tracker`, rồi bấm **Import**.
+3. Ở *Framework Preset* chọn **Other** và giữ nguyên các mục khác. Bấm **Deploy**.
+4. Trong dự án vừa tạo, mở tab **Storage**, chọn **Create Database → Upstash for Redis (Marketplace)**. Chọn gói **Free**, đặt tên, rồi **Connect** vào dự án `ghn-project-tracker`. Vercel sẽ tự thêm biến `KV_REST_API_URL` và `KV_REST_API_TOKEN`.
+5. *(Nên làm)* Vào **Settings → Environment Variables** và thêm `APP_PASSCODE` = mã truy cập chung của nhóm. Khi có mã này, ai không biết mã sẽ không xem hay sửa được.
+6. Vào **Deployments**, bấm **⋯** ở bản mới nhất rồi chọn **Redeploy** để áp dụng biến môi trường.
+7. Mở link dạng `https://ghn-project-tracker.vercel.app`. Lần mở đầu tiên, dữ liệu trên trình duyệt đó sẽ được đưa lên làm bản chung.
+
+Sau này mỗi lần push code lên nhánh `main`, Vercel tự triển khai lại.
+
+## Chạy khác
 
 - Mở trực tiếp `index.html` bằng trình duyệt, hoặc
 - Dùng GitHub Pages: *Settings → Pages → Deploy from branch → `main` / root*.
@@ -30,6 +42,7 @@ Dữ liệu được **lưu tự động trong trình duyệt** (localStorage) c
 
 ```
 index.html
+api/data.js            # API lưu dữ liệu chung (Vercel Function + Upstash Redis)
 assets/css/style.css   # giao diện
 assets/js/seed.js      # dữ liệu khởi tạo (dự án nhận bàn giao mặt bằng 20/11)
 assets/js/app.js       # logic ứng dụng

@@ -71,11 +71,141 @@
   function save(msg) {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(db));
-      $('#saveState').textContent = 'Đã lưu lúc ' + fmtTime(new Date().toISOString()).slice(0, 5);
+      if (!cloud.enabled) setSaveState('Đã lưu trên máy lúc ' + fmtTime(new Date().toISOString()).slice(0, 5));
     } catch (e) {
-      toast('Không lưu được dữ liệu trên trình duyệt này – hãy dùng "Sao lưu".', true);
+      if (!cloud.enabled) toast('Không lưu được dữ liệu trên trình duyệt này – hãy dùng "Sao lưu".', true);
     }
+    if (cloud.enabled) schedulePush();
     if (msg) toast(msg);
+  }
+  function setSaveState(text, isError) {
+    const el = $('#saveState');
+    el.textContent = text;
+    el.style.color = isError ? 'var(--danger)' : '';
+  }
+
+  // ---------- Đồng bộ đám mây (khi chạy trên Vercel) ----------
+  const API_URL = 'api/data';
+  const PASS_KEY = 'ghn-pt-passcode';
+  const cloud = { enabled: false, rev: 0, synced: {}, pushing: false, pending: false, timer: null };
+  const getPass = () => { try { return localStorage.getItem(PASS_KEY) || ''; } catch (e) { return ''; } };
+  const snapshot = (d) => Object.fromEntries(d.projects.map((p) => [p.id, JSON.stringify(p)]));
+  const hasLocalChanges = () => {
+    const now = snapshot(db);
+    const ids = new Set([...Object.keys(now), ...Object.keys(cloud.synced)]);
+    for (const id of ids) if (now[id] !== cloud.synced[id]) return true;
+    return false;
+  };
+  async function api(method, body) {
+    const r = await fetch(API_URL, {
+      method, cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'x-passcode': getPass() },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const ct = r.headers.get('content-type') || '';
+    const json = ct.includes('application/json') ? await r.json().catch(() => null) : null;
+    return { status: r.status, json };
+  }
+  function applyRemote(data, rev) {
+    db = normalize(data);
+    cloud.rev = rev;
+    cloud.synced = snapshot(db);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) {}
+  }
+  // Gộp: lấy bản trên máy chủ, giữ lại các dự án mình vừa sửa/thêm/xóa
+  function mergeInto(server) {
+    const mine = snapshot(db);
+    const merged = normalize(server || { projects: [] });
+    Object.keys(mine).forEach((id) => {
+      if (mine[id] === cloud.synced[id]) return;
+      const p = JSON.parse(mine[id]);
+      const i = merged.projects.findIndex((x) => x.id === id);
+      if (i >= 0) merged.projects[i] = p; else merged.projects.push(p);
+    });
+    Object.keys(cloud.synced).forEach((id) => {
+      if (!mine[id]) merged.projects = merged.projects.filter((x) => x.id !== id);
+    });
+    return merged;
+  }
+  function schedulePush() {
+    setSaveState('Đang lưu lên máy chủ…');
+    clearTimeout(cloud.timer);
+    cloud.timer = setTimeout(push, 400);
+  }
+  async function push() {
+    if (cloud.pushing) { cloud.pending = true; return; }
+    cloud.pushing = true;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { status, json } = await api('PUT', { baseRev: cloud.rev, data: db });
+        if (status === 200) {
+          cloud.rev = json.rev; cloud.synced = snapshot(db);
+          setSaveState('Đã đồng bộ lúc ' + fmtTime(new Date().toISOString()).slice(0, 5) + ' · mọi người đều thấy');
+          break;
+        }
+        if (status === 409) {
+          db = mergeInto(json.data); cloud.rev = json.rev;
+          toast('Có người vừa cập nhật – đã gộp thay đổi của bạn với bản mới nhất');
+          if (!modalClose) render();
+          continue;
+        }
+        if (status === 401) { askPasscode(); break; }
+        throw new Error((json && json.error) || 'HTTP ' + status);
+      }
+    } catch (e) {
+      setSaveState('Chưa đồng bộ được – sẽ thử lại', true);
+      toast('Lỗi lưu lên máy chủ: ' + e.message, true);
+      clearTimeout(cloud.timer); cloud.timer = setTimeout(push, 8000);
+    } finally {
+      cloud.pushing = false;
+      if (cloud.pending) { cloud.pending = false; push(); }
+    }
+  }
+  async function pull() {
+    if (!cloud.enabled || cloud.pushing || document.hidden) return;
+    try {
+      const { status, json } = await api('GET');
+      if (status !== 200 || !json || json.rev <= cloud.rev || !json.data) return;
+      if (hasLocalChanges()) { db = mergeInto(json.data); cloud.rev = json.rev; schedulePush(); }
+      else applyRemote(json.data, json.rev);
+      const busy = modalClose || ['INPUT', 'TEXTAREA', 'SELECT'].includes((document.activeElement || {}).tagName);
+      if (!busy) { const y = window.scrollY; parseHash(); render(); window.scrollTo(0, y); }
+      setSaveState('Đã cập nhật dữ liệu mới lúc ' + fmtTime(new Date().toISOString()).slice(0, 5));
+    } catch (e) { /* mạng chập chờn – lần sau thử lại */ }
+  }
+  function askPasscode(wrong) {
+    return new Promise((resolve) => {
+      const { root, close } = showModal('Nhập mã truy cập', `<form id="passForm">
+        <p style="margin:0 0 12px">Trang này dùng chung cho cả nhóm. Nhập mã truy cập do quản trị viên cung cấp.</p>
+        ${wrong ? '<p style="margin:0 0 12px;color:var(--danger)">Mã không đúng, vui lòng thử lại.</p>' : ''}
+        <input class="input" type="password" name="pass" autocomplete="current-password" required aria-label="Mã truy cập">
+        <div class="modal-actions"><span class="spacer"></span><button class="btn btn-primary" type="submit">Vào trang</button></div></form>`, 'sm');
+      root.querySelector('#passForm').onsubmit = (e) => {
+        e.preventDefault();
+        try { localStorage.setItem(PASS_KEY, e.target.elements.pass.value); } catch (err) {}
+        close(); resolve(connectCloud());
+      };
+    });
+  }
+  async function connectCloud() {
+    let res;
+    try { res = await api('GET'); } catch (e) { return false; } // không có API → chế độ lưu trên máy
+    if (res.status === 401) return askPasscode(!!getPass());
+    if (res.status === 503) { setSaveState('Máy chủ chưa kết nối kho dữ liệu – đang lưu trên máy', true); return false; }
+    if (res.status !== 200 || !res.json) return false;
+    cloud.enabled = true;
+    if (res.json.data) {
+      applyRemote(res.json.data, res.json.rev);
+      setSaveState('Đồng bộ dữ liệu chung · mọi người đều thấy');
+    } else {
+      // Máy chủ chưa có dữ liệu: đưa dữ liệu hiện có lên làm bản đầu tiên
+      cloud.rev = res.json.rev || 0; cloud.synced = {};
+      await push();
+    }
+    parseHash(); render();
+    setInterval(pull, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+    return true;
   }
   function logp(p, text) {
     p.log.unshift({ at: new Date().toISOString(), text });
@@ -819,7 +949,7 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalClose) modalClose(); });
   // Đồng bộ khi mở nhiều tab
-  window.addEventListener('storage', (e) => { if (e.key === STORE_KEY && e.newValue) { db = normalize(JSON.parse(e.newValue)); parseHash(); render(); } });
+  window.addEventListener('storage', (e) => { if (!cloud.enabled && e.key === STORE_KEY && e.newValue) { db = normalize(JSON.parse(e.newValue)); parseHash(); render(); } });
 
   function afterRender() {}
 
@@ -827,4 +957,6 @@
   if (!localStorage.getItem(STORE_KEY)) { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) {} }
   parseHash();
   render();
+  // Chỉ thử kết nối máy chủ khi chạy qua http(s) (Vercel); mở file trực tiếp thì lưu trên máy
+  if (location.protocol.startsWith('http')) connectCloud();
 })();
