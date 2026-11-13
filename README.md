@@ -33,6 +33,14 @@ Trang web theo dõi tiến độ dự án Kho, giao diện theo tông màu GHN. 
 
 Sau này mỗi lần push code lên nhánh `main`, Vercel tự triển khai lại.
 
+### Ảnh tiến độ (Vercel Blob)
+
+Mỗi đầu việc trong Checklist có nút 📷 để tải ảnh hiện trường lên (chọn được nhiều ảnh, ảnh tự nén về ≤1600px). Ảnh hiện ngay dưới tên công việc, ở mục "Ảnh tiến độ mới nhất" trong tab Tổng quan, và xem phóng to được.
+
+Cách bật: vào **Storage → Create Database → Blob**, chọn **Public**, rồi **Connect** vào dự án. Vercel sẽ tự thêm biến `BLOB_READ_WRITE_TOKEN`. Sau đó **Redeploy**.
+
+> Đường link ảnh là link công khai nhưng có chuỗi ngẫu nhiên, nên chỉ người có link mới mở được.
+
 ## Chạy khác
 
 - Mở trực tiếp `index.html` bằng trình duyệt, hoặc
@@ -43,6 +51,7 @@ Sau này mỗi lần push code lên nhánh `main`, Vercel tự triển khai lạ
 ```
 index.html
 api/data.js            # API lưu dữ liệu chung (Vercel Function + Upstash Redis)
+api/upload.js          # API tải/xóa ảnh tiến độ (Vercel Blob)
 assets/css/style.css   # giao diện
 assets/js/seed.js      # dữ liệu khởi tạo (dự án nhận bàn giao mặt bằng 20/11)
 assets/js/app.js       # logic ứng dụng

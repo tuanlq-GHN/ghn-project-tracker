@@ -31,6 +31,7 @@
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
     folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
     truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg>',
+    camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
     copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>',
   };
@@ -61,6 +62,7 @@
     d.projects.forEach((p) => {
       ['milestones', 'tasks', 'zones', 'gates', 'trainings', 'contractor', 'people', 'log'].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; });
       if (!p.id) p.id = uid('p');
+      p.tasks.forEach((t) => { if (!Array.isArray(t.photos)) t.photos = []; });
     });
     return d;
   }
@@ -96,8 +98,8 @@
     for (const id of ids) if (now[id] !== cloud.synced[id]) return true;
     return false;
   };
-  async function api(method, body) {
-    const r = await fetch(API_URL, {
+  async function api(method, body, url = API_URL) {
+    const r = await fetch(url, {
       method, cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'x-passcode': getPass() },
       body: body ? JSON.stringify(body) : undefined,
@@ -488,6 +490,10 @@
               </div>`).join('')}</div>` : emptyState('Chưa có mốc', '')}
           </div>
           <div class="card">
+            <div class="card-head"><h3>Ảnh tiến độ mới nhất</h3><span class="sub">${allPhotos(p).length} ảnh</span></div>
+            ${recentPhotos(p)}
+          </div>
+          <div class="card">
             <div class="card-head"><h3>Lịch sử cập nhật</h3></div>
             <div class="list">${p.log.slice(0, 8).map((l) => `<div class="list-item"><div class="li-main"><div style="font-size:13px">${esc(l.text)}</div><div class="li-sub tnum">${fmtTime(l.at)}</div></div></div>`).join('') || '<div class="muted">Chưa có.</div>'}</div>
           </div>
@@ -533,12 +539,12 @@
           <tr class="group-row"><td colspan="7"><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span>${esc(g)}</span><span class="muted tnum" style="font-weight:500">${d}/${list.length}</span><div class="progress-row" style="flex:1;min-width:140px"><div class="bar"><i style="width:${pc}%"></i></div><b>${pc}%</b></div></div></td></tr>
           ${list.map((x) => `<tr>
             <td class="chk"><input type="checkbox" data-action="toggle-task" data-id="${x.id}" ${x.status === 'done' ? 'checked' : ''} aria-label="Hoàn thành"></td>
-            <td style="min-width:260px"><div class="task-title ${x.status === 'done' ? 'done' : ''}">${esc(x.title)}</div>${x.note ? `<div class="task-note">${esc(x.note)}</div>` : ''}</td>
+            <td style="min-width:260px"><div class="task-title ${x.status === 'done' ? 'done' : ''}">${esc(x.title)}</div>${x.note ? `<div class="task-note">${esc(x.note)}</div>` : ''}${thumbStrip(x)}</td>
             <td style="min-width:150px">${x.pic ? `<span style="font-weight:600">${esc(x.pic)}</span>` : `<span class="badge b-nopic">Chưa có PIC</span>`}</td>
             <td class="date-cell ${isOverdue(x) ? 'overdue' : ''}">${x.start ? fmtShort(x.start) + ' → ' : ''}${x.due ? fmtDate(x.due) : '<span class="muted">Chưa có hạn</span>'}${isOverdue(x) ? '<br>Quá hạn' : ''}</td>
             <td><span class="badge b-${x.priority}">${PRIORITY[x.priority] || ''}</span></td>
             <td><select class="select input inline-select" data-action="task-status" data-id="${x.id}" aria-label="Trạng thái">${opts(TASK_STATUS).map((o) => `<option value="${o.value}"${o.value === x.status ? ' selected' : ''}>${o.label}</option>`).join('')}</select></td>
-            <td><div class="cell-actions"><button class="icon-btn" data-action="edit-task" data-id="${x.id}" aria-label="Sửa">${ICON.edit}</button><button class="icon-btn danger" data-action="delete-task" data-id="${x.id}" aria-label="Xóa">${ICON.trash}</button></div></td>
+            <td><div class="cell-actions"><button class="icon-btn" data-action="task-photos" data-id="${x.id}" aria-label="Ảnh tiến độ" title="Ảnh tiến độ">${ICON.camera}</button><button class="icon-btn" data-action="edit-task" data-id="${x.id}" aria-label="Sửa">${ICON.edit}</button><button class="icon-btn danger" data-action="delete-task" data-id="${x.id}" aria-label="Xóa">${ICON.trash}</button></div></td>
           </tr>`).join('')}`; }).join('')}
         </tbody></table></div>` : `<div class="card">${emptyState('Không có công việc phù hợp', 'Thử bỏ bớt bộ lọc hoặc thêm việc mới.')}</div>`}`;
   }
@@ -717,6 +723,178 @@
       ${p.tasks.length - dated.length ? `<p class="muted" style="font-size:12.5px">${p.tasks.length - dated.length} việc chưa có ngày nên không hiển thị trên timeline.</p>` : ''}`;
   }
 
+  // ---------- Ảnh tiến độ theo từng đầu việc ----------
+  const UPLOAD_URL = 'api/upload';
+  const findTask = (pid, tid) => {
+    const p = db.projects.find((x) => x.id === pid);
+    const t = p && p.tasks.find((x) => x.id === tid);
+    if (t && !Array.isArray(t.photos)) t.photos = [];
+    return t ? { p, t } : null;
+  };
+  const allPhotos = (p) => p.tasks
+    .flatMap((t) => (t.photos || []).map((ph) => Object.assign({ task: t }, ph)))
+    .sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  const thumbBtn = (t, ph) => `<button class="thumb" data-action="view-photo" data-task="${t.id}" data-photo="${ph.id}" title="${esc(ph.caption || t.title)}"><img src="${esc(ph.url)}" alt="${esc(ph.caption || t.title)}" loading="lazy"></button>`;
+  function thumbStrip(t) {
+    const list = (t.photos || []).slice().reverse();
+    if (!list.length) return '';
+    return `<div class="thumbs">${list.slice(0, 4).map((ph) => thumbBtn(t, ph)).join('')}${list.length > 4 ? `<button class="thumb more" data-action="task-photos" data-id="${t.id}">+${list.length - 4}</button>` : ''}</div>`;
+  }
+  function recentPhotos(p) {
+    const list = allPhotos(p).slice(0, 8);
+    if (!list.length) return `<div class="muted" style="font-size:13px">Chưa có ảnh. Bấm biểu tượng máy ảnh ở từng đầu việc trong tab Checklist để tải ảnh lên.</div>`;
+    return `<div class="photo-mini">${list.map((ph) => `<div>${thumbBtn(ph.task, ph)}<div class="pm-cap" title="${esc(ph.task.title)}">${esc(ph.task.title)}</div></div>`).join('')}</div>`;
+  }
+
+  async function compressImage(file, max = 1600, quality = 0.8) {
+    let src;
+    try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) {
+      src = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('không đọc được ảnh (định dạng chưa hỗ trợ, hãy chọn JPG/PNG)'));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    const s = Math.min(1, max / Math.max(src.width, src.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(src.width * s); c.height = Math.round(src.height * s);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', quality));
+    if (!blob) throw new Error('không nén được ảnh');
+    return blob;
+  }
+  const blobToBase64 = (b) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(b);
+  });
+
+  async function uploadFiles(pid, tid, files, onStatus) {
+    let ok = 0;
+    for (let k = 0; k < files.length; k++) {
+      const f = files[k];
+      if (!f.type.startsWith('image/')) { toast(`${f.name}: không phải file ảnh`, true); continue; }
+      onStatus(`Đang nén và tải ảnh ${k + 1}/${files.length}…`);
+      try {
+        const blob = await compressImage(f);
+        const { status, json } = await api('POST', { projectId: pid, taskId: tid, data: await blobToBase64(blob) }, UPLOAD_URL);
+        if (status === 401) { askPasscode(true); return; }
+        if (status !== 200 || !json || !json.url) throw new Error((json && json.error) || 'lỗi máy chủ (HTTP ' + status + ')');
+        const cur = findTask(pid, tid);
+        if (!cur) return;
+        cur.t.photos.push({ id: uid('ph'), url: json.url, caption: '', at: new Date().toISOString() });
+        ok++;
+      } catch (e) { toast(`${f.name}: ${e.message}`, true); }
+    }
+    onStatus('');
+    const cur = findTask(pid, tid);
+    if (ok && cur) { logp(cur.p, `Thêm ${ok} ảnh: ${cur.t.title}`); save(`Đã tải lên ${ok} ảnh`); render(); }
+  }
+
+  function openPhotos(pid, tid, viewId) {
+    if (!findTask(pid, tid)) return;
+    const { root } = showModal('Ảnh tiến độ', '<div id="photoBody"></div>', 'lg');
+    const body = root.querySelector('#photoBody');
+    let busy = false;
+    const draw = () => {
+      const cur = findTask(pid, tid);
+      if (!cur) { if (modalClose) modalClose(); return; }
+      const t = cur.t, list = t.photos.slice().reverse();
+      body.innerHTML = `
+        <div class="photo-head">
+          <div style="min-width:0"><div class="task-title">${esc(t.title)}</div>
+            <div class="li-sub">${esc(t.group || '')} · ${t.pic ? 'PIC: ' + esc(t.pic) : 'Chưa có PIC'} · ${TASK_STATUS[t.status] || ''} · ${list.length} ảnh</div></div>
+          <span class="spacer"></span>
+          ${cloud.enabled ? `<label class="btn btn-primary ${busy ? 'disabled' : ''}">${ICON.camera} Tải ảnh lên<input type="file" accept="image/*" multiple hidden data-photo-input ${busy ? 'disabled' : ''}></label>` : ''}
+        </div>
+        ${cloud.enabled ? '' : `<div class="rule-banner warn">${ICON.alert}<div>Tải ảnh chỉ dùng được trên link dùng chung (Vercel), vì ảnh cần lưu trên máy chủ để mọi người cùng xem.</div></div>`}
+        <div class="up-status" data-up-status></div>
+        ${list.length ? `<div class="photo-grid">${list.map((ph) => `
+          <figure class="photo">
+            <button class="photo-img" data-view="${ph.id}" aria-label="Xem ảnh lớn"><img src="${esc(ph.url)}" alt="${esc(ph.caption || t.title)}" loading="lazy"></button>
+            <figcaption>
+              <input class="input cap" data-cap="${ph.id}" value="${esc(ph.caption || '')}" placeholder="Thêm chú thích…" aria-label="Chú thích" ${cloud.enabled ? '' : 'disabled'}>
+              <div class="photo-meta"><span class="tnum">${fmtTime(ph.at)}</span>
+                ${cloud.enabled ? `<button class="btn btn-sm btn-danger-ghost" data-del-photo="${ph.id}">${ICON.trash} Xóa</button>` : ''}</div>
+            </figcaption>
+          </figure>`).join('')}</div>`
+          : emptyState('Chưa có ảnh', 'Tải ảnh hiện trường để mọi người theo dõi tiến độ trực quan hơn. Có thể chọn nhiều ảnh cùng lúc.')}`;
+    };
+    draw();
+    body.addEventListener('change', async (e) => {
+      if (e.target.matches('[data-photo-input]')) {
+        const files = [...e.target.files];
+        if (!files.length) return;
+        busy = true; draw();
+        await uploadFiles(pid, tid, files, (s) => { const el = body.querySelector('[data-up-status]'); if (el) el.textContent = s; });
+        busy = false; draw();
+      } else if (e.target.dataset.cap) {
+        const cur = findTask(pid, tid);
+        const ph = cur && cur.t.photos.find((x) => x.id === e.target.dataset.cap);
+        if (ph) { ph.caption = e.target.value.trim(); save('Đã lưu chú thích'); render(); }
+      }
+    });
+    body.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.cap) e.target.blur(); });
+    body.addEventListener('click', async (e) => {
+      const v = e.target.closest('[data-view]');
+      if (v) { lightbox(pid, tid, v.dataset.view); return; }
+      const d = e.target.closest('[data-del-photo]');
+      if (!d) return;
+      if (!d.dataset.armed) { // bấm 2 lần để xóa, tránh xóa nhầm
+        d.dataset.armed = '1'; d.innerHTML = `${ICON.trash} Bấm lần nữa để xóa`;
+        setTimeout(() => { if (d.isConnected) { delete d.dataset.armed; d.innerHTML = `${ICON.trash} Xóa`; } }, 3000);
+        return;
+      }
+      const cur = findTask(pid, tid);
+      const ph = cur && cur.t.photos.find((x) => x.id === d.dataset.delPhoto);
+      if (!ph) return;
+      d.disabled = true;
+      let res = { status: 0 };
+      try { res = await api('DELETE', { url: ph.url }, UPLOAD_URL); } catch (err) { /* mạng lỗi */ }
+      removeFrom(cur.t.photos, ph.id);
+      logp(cur.p, 'Xóa 1 ảnh: ' + cur.t.title);
+      save(res.status === 200 ? 'Đã xóa ảnh' : 'Đã gỡ ảnh khỏi đầu việc (chưa xóa được file trên máy chủ)');
+      render(); draw();
+    });
+    if (viewId) lightbox(pid, tid, viewId);
+  }
+
+  function lightbox(pid, tid, photoId) {
+    const cur = findTask(pid, tid);
+    if (!cur || !cur.t.photos.length) return;
+    const t = cur.t, list = t.photos.slice().reverse();
+    let i = Math.max(0, list.findIndex((x) => x.id === photoId));
+    const el = document.createElement('div');
+    el.className = 'lightbox';
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Xem ảnh');
+    const draw = () => {
+      const ph = list[i];
+      el.innerHTML = `<button class="icon-btn lb-close" aria-label="Đóng">${ICON.close}</button>
+        ${list.length > 1 ? '<button class="lb-nav prev" aria-label="Ảnh trước">‹</button><button class="lb-nav next" aria-label="Ảnh sau">›</button>' : ''}
+        <figure><img src="${esc(ph.url)}" alt="${esc(ph.caption || t.title)}">
+          <figcaption><b>${esc(t.title)}</b>${ph.caption ? ' – ' + esc(ph.caption) : ''}<span class="tnum">${fmtTime(ph.at)} · ${i + 1}/${list.length}</span></figcaption></figure>`;
+    };
+    const step = (n) => { i = (i + n + list.length) % list.length; draw(); };
+    const closeLb = () => { el.remove(); window.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); closeLb(); }
+      else if (e.key === 'ArrowRight') step(1);
+      else if (e.key === 'ArrowLeft') step(-1);
+    };
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.prev')) step(-1);
+      else if (e.target.closest('.next')) step(1);
+      else if (e.target.closest('.lb-close') || e.target === el || e.target.tagName === 'FIGURE') closeLb();
+    });
+    window.addEventListener('keydown', onKey, true);
+    draw();
+    document.body.appendChild(el);
+  }
+
   // ---------- Project forms ----------
   const projectFields = [
     { name: 'name', label: 'Tên dự án', required: true, full: true },
@@ -806,7 +984,7 @@
       case 'duplicate-project': {
         const c = JSON.parse(JSON.stringify(p));
         c.id = uid('p'); c.name = p.name + ' (bản sao)'; c.createdAt = new Date().toISOString(); c.status = 'planning';
-        c.tasks.forEach((x) => { x.id = uid('t'); x.status = 'todo'; });
+        c.tasks.forEach((x) => { x.id = uid('t'); x.status = 'todo'; x.photos = []; });
         c.milestones.forEach((x) => { x.id = uid('m'); x.done = false; });
         c.zones.forEach((x) => { x.id = uid('z'); x.status = 'none'; x.date = ''; });
         c.trainings.forEach((x) => { x.id = uid('tr'); x.status = 'plan'; });
@@ -846,6 +1024,8 @@
         break;
       }
       case 'delete-task': deleteTask(p, findIn(p.tasks, id)); break;
+      case 'task-photos': openPhotos(p.id, id); break;
+      case 'view-photo': openPhotos(p.id, el.dataset.task, el.dataset.photo); break;
       case 'toggle-task': { const x = findIn(p.tasks, id); x.status = el.checked ? 'done' : 'todo'; logp(p, (el.checked ? 'Hoàn thành: ' : 'Mở lại: ') + x.title); save(); render(); break; }
 
       case 'add-zone':
@@ -929,7 +1109,10 @@
     }
   });
   async function deleteTask(p, x) {
-    if (await confirmDialog(`Xóa công việc "${x.title}"?`)) { removeFrom(p.tasks, x.id); logp(p, 'Xóa việc: ' + x.title); save('Đã xóa'); render(); }
+    const n = (x.photos || []).length;
+    if (await confirmDialog(`Xóa công việc "${x.title}"?${n ? ` Kèm ${n} ảnh tiến độ.` : ''}`)) {
+      (x.photos || []).forEach((ph) => api('DELETE', { url: ph.url }, UPLOAD_URL).catch(() => {}));
+      removeFrom(p.tasks, x.id); logp(p, 'Xóa việc: ' + x.title); save('Đã xóa'); render(); }
   }
 
   document.addEventListener('change', (e) => {
