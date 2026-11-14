@@ -372,7 +372,7 @@
         <div class="pc-desc">${esc(p.description || 'Chưa có mô tả')}</div>
         <div class="progress-row"><div class="bar"><i style="width:${s.pct}%"></i></div><b>${s.pct}%</b></div>
         <div class="pc-stats"><span>📅 <b>${fmtDate(p.startDate)}</b> → <b>${fmtDate(p.endDate)}</b></span></div>
-        <div class="pc-stats"><span><b>${s.done}/${s.total}</b> việc</span><span><b>${s.zonesDone}/${p.zones.length}</b> zone Tele</span>${s.overdue ? `<span class="badge b-overdue">${s.overdue} quá hạn</span>` : ''}${s.noPic ? `<span class="badge b-nopic">${s.noPic} chưa có PIC</span>` : ''}</div>
+        <div class="pc-stats"><span><b>${s.done}/${s.total}</b> việc</span><span><b>${picNames(p).length}</b> PIC</span>${s.overdue ? `<span class="badge b-overdue">${s.overdue} quá hạn</span>` : ''}${s.noPic ? `<span class="badge b-nopic">${s.noPic} chưa có PIC</span>` : ''}</div>
       </a>`;
     }).join('');
 
@@ -411,17 +411,18 @@
 
   // ---------- Project ----------
   const TABS = [
-    ['overview', 'Tổng quan'], ['tasks', 'Checklist công việc'], ['zones', 'Layout zone & Cổng'],
-    ['training', 'Đào tạo'], ['contractor', 'Nhà thầu'], ['team', 'Nhân sự & PIC'], ['timeline', 'Timeline'],
+    ['overview', 'Tổng quan'], ['tasks', 'Checklist công việc'], ['pic', 'PIC'],
+    ['training', 'Đào tạo'], ['timeline', 'Timeline'],
   ];
+  const OLD_TABS = { team: 'pic', contractor: 'pic', zones: 'overview' }; // link cũ vẫn mở được
   function renderProject(p) {
     const s = stats(p);
-    const counts = { tasks: p.tasks.length, zones: p.zones.length, training: p.trainings.length, contractor: s.openQ, team: p.people.length };
-    const tab = TABS.some((t) => t[0] === route.tab) ? route.tab : 'overview';
+    const counts = { tasks: p.tasks.length, pic: picNames(p).length, training: p.trainings.length };
+    const want = OLD_TABS[route.tab] || route.tab;
+    const tab = TABS.some((t) => t[0] === want) ? want : 'overview';
     const daysLeft = p.endDate ? daysBetween(todayStr(), p.endDate) : null;
     const body = {
-      overview: tabOverview, tasks: tabTasks, zones: tabZones, training: tabTraining,
-      contractor: tabContractor, team: tabTeam, timeline: tabTimeline,
+      overview: tabOverview, tasks: tabTasks, pic: tabPic, training: tabTraining, timeline: tabTimeline,
     }[tab](p, s);
     return `
       <section class="hero"><div class="hero-row">
@@ -462,8 +463,8 @@
       <div class="grid kpis">
         <div class="card kpi"><div class="label">Tiến độ công việc</div><div class="value">${s.pct}%</div><div class="hint">${s.done}/${s.total} việc hoàn thành</div></div>
         <div class="card kpi ${s.overdue ? 'alert' : ''}"><div class="label">Quá hạn / Vướng mắc</div><div class="value">${s.overdue}<span class="muted" style="font-size:18px"> / ${s.blocked}</span></div><div class="hint">Cần xử lý ngay</div></div>
-        <div class="card kpi"><div class="label">Zone đã lắp Tele</div><div class="value">${s.zonesDone}<span class="muted" style="font-size:18px">/${p.zones.length}</span></div><div class="hint">${s.zonesDone} zone cấm nhà thầu</div></div>
-        <div class="card kpi ${s.openQ ? 'warn' : ''}"><div class="label">Chờ nhà thầu phản hồi</div><div class="value">${s.openQ}</div><div class="hint">Đào tạo: ${trainDone}/${p.trainings.length} hoàn thành</div></div>
+        <div class="card kpi"><div class="label">Số PIC phụ trách</div><div class="value">${picNames(p).length}</div><div class="hint">Đào tạo: ${trainDone}/${p.trainings.length} hoàn thành</div></div>
+        <div class="card kpi ${s.noPic ? 'warn' : ''}"><div class="label">Việc chưa có PIC</div><div class="value">${s.noPic}</div><div class="hint"><a href="#/p/${p.id}/pic">Phân công ở tab PIC</a></div></div>
       </div>
       <div class="grid cols-2">
         <div class="grid" style="align-content:start">
@@ -508,11 +509,18 @@
     tasks.forEach((x) => { const g = x.group || 'Khác'; if (!map.has(g)) map.set(g, []); map.get(g).push(x); });
     return [...map.entries()];
   }
-  function picList(p) {
-    const s = new Set(p.people.map((x) => x.name).filter(Boolean));
-    p.tasks.forEach((x) => x.pic && s.add(x.pic));
-    return [...s].sort((a, b) => a.localeCompare(b, 'vi'));
+  // Một việc có thể có nhiều PIC: "Anh A + Chị B", "A, B"
+  const splitPics = (s) => String(s || '').split(/\s*[+,;]\s*/).map((x) => x.trim()).filter(Boolean);
+  const hasPic = (x, name) => splitPics(x).some((n) => n.toLowerCase() === String(name).toLowerCase());
+  function picNames(p) {
+    const map = new Map();
+    const add = (n) => { const k = n.toLowerCase(); if (!map.has(k)) map.set(k, n); };
+    p.people.forEach((x) => x.name && add(x.name.trim()));
+    p.tasks.forEach((x) => splitPics(x.pic).forEach(add));
+    p.contractor.forEach((x) => splitPics(x.owner).forEach(add));
+    return [...map.values()].sort((a, b) => a.localeCompare(b, 'vi'));
   }
+  const picList = picNames;
   function tabTasks(p) {
     const groups = [...new Set(p.tasks.map((x) => x.group || 'Khác'))];
     const pics = picList(p);
@@ -521,7 +529,7 @@
       (!q || (x.title + ' ' + x.note + ' ' + x.pic).toLowerCase().includes(q)) &&
       (!filters.group || (x.group || 'Khác') === filters.group) &&
       (!filters.status || (filters.status === 'overdue' ? isOverdue(x) : x.status === filters.status)) &&
-      (!filters.pic || (filters.pic === '__none' ? !x.pic : x.pic === filters.pic)));
+      (!filters.pic || (filters.pic === '__none' ? !x.pic : hasPic(x.pic, filters.pic))));
     const grouped = groupTasks(rows);
     const sel = (name, value, options, label) => `<select class="select input" data-filter="${name}" aria-label="${label}"><option value="">${label}</option>${options.map((o) => `<option value="${esc(o.value)}"${o.value === value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
     return `
@@ -691,6 +699,73 @@
         </div>
       </div>`;
   }
+  // --- PIC tab: mỗi người phụ trách một thẻ, kèm toàn bộ việc của họ
+  const initials = (n) => n.split(/\s+/).filter(Boolean).slice(-2).map((w) => w[0]).join('').toUpperCase();
+  function tabPic(p) {
+    const q = (filters.picQ || '').toLowerCase();
+    const hideDone = !!filters.hideDone;
+    const allNames = picNames(p);
+    const names = allNames.filter((n) => !q || n.toLowerCase().includes(q));
+    const byDue = (a, b) => (a.due || '9').localeCompare(b.due || '9');
+    const statusSel = (x) => `<select class="select input inline-select" data-action="task-status" data-id="${x.id}" aria-label="Trạng thái">${opts(TASK_STATUS).map((o) => `<option value="${o.value}"${o.value === x.status ? ' selected' : ''}>${o.label}</option>`).join('')}</select>`;
+    const taskRow = (x) => `<tr>
+      <td class="chk"><input type="checkbox" data-action="toggle-task" data-id="${x.id}" ${x.status === 'done' ? 'checked' : ''} aria-label="Hoàn thành"></td>
+      <td style="min-width:240px"><div class="task-title ${x.status === 'done' ? 'done' : ''}">${esc(x.title)}</div>
+        <div class="li-sub">${esc(x.group || '')}${splitPics(x.pic).length > 1 ? ' · Phối hợp: ' + esc(x.pic) : ''}${(x.photos || []).length ? ` · ${x.photos.length} ảnh` : ''}</div></td>
+      <td class="date-cell ${isOverdue(x) ? 'overdue' : ''}">${x.due ? fmtDate(x.due) : '<span class="muted">Chưa có hạn</span>'}${isOverdue(x) ? '<br>Quá hạn' : ''}</td>
+      <td>${statusSel(x)}</td>
+      <td><div class="cell-actions"><button class="icon-btn" data-action="task-photos" data-id="${x.id}" aria-label="Ảnh tiến độ" title="Ảnh tiến độ">${ICON.camera}</button><button class="icon-btn" data-action="edit-task" data-id="${x.id}" aria-label="Sửa">${ICON.edit}</button></div></td>
+    </tr>`;
+    const qItem = (c, assign) => `<div class="list-item">
+      <div class="li-main"><div class="li-title" style="font-size:13px">${esc(c.question)}</div>
+        <div class="li-sub">${c.answer ? 'Phản hồi: ' + esc(c.answer) : 'Chưa có phản hồi'} · Hạn ${fmtDate(c.due)}</div>${assign || ''}</div>
+      <span class="badge b-${c.status}">${CONTRACTOR_STATUS[c.status] || ''}</span>
+      <button class="icon-btn" data-action="edit-contractor" data-id="${c.id}" aria-label="Sửa">${ICON.edit}</button></div>`;
+    const assignSel = (action, id) => `<select class="select input inline-select" style="margin-top:6px;max-width:100%" data-action="${action}" data-id="${id}" aria-label="Gán PIC"><option value="">Gán PIC…</option>${allNames.map((n) => `<option>${esc(n)}</option>`).join('')}</select>`;
+
+    const card = (name) => {
+      const person = p.people.find((m) => (m.name || '').trim().toLowerCase() === name.toLowerCase());
+      const all = p.tasks.filter((x) => hasPic(x.pic, name)).sort(byDue);
+      const tasks = hideDone ? all.filter((x) => x.status !== 'done') : all;
+      const qs = p.contractor.filter((c) => hasPic(c.owner, name));
+      const d = all.filter((x) => x.status === 'done').length;
+      const od = all.filter(isOverdue).length;
+      const doing = all.filter((x) => x.status === 'doing').length;
+      const pc = all.length ? Math.round((d / all.length) * 100) : 0;
+      const contact = person ? [person.role && esc(person.role), person.phone && `<a href="tel:${esc(person.phone)}">${esc(person.phone)}</a>`, person.email && `<a href="mailto:${esc(person.email)}">${esc(person.email)}</a>`].filter(Boolean).join(' · ') : '';
+      return `<section class="card pic-card">
+        <div class="pic-head">
+          <div class="avatar" aria-hidden="true">${esc(initials(name))}</div>
+          <div style="flex:1;min-width:0"><h3>${esc(name)}</h3><div class="li-sub">${contact || 'Chưa có vai trò / số điện thoại'}</div></div>
+          <div class="pc-stats"><span><b>${d}/${all.length}</b> xong</span>${doing ? `<span><b>${doing}</b> đang làm</span>` : ''}${od ? `<span class="badge b-overdue">${od} quá hạn</span>` : ''}</div>
+          <button class="btn btn-sm" data-action="${person ? 'edit-person' : 'add-person'}" ${person ? `data-id="${person.id}"` : `data-name="${esc(name)}"`}>${ICON.edit} ${person ? 'Sửa thông tin' : 'Thêm thông tin'}</button>
+        </div>
+        ${all.length ? `<div class="progress-row" style="margin:12px 0"><div class="bar lg"><i style="width:${pc}%"></i></div><b>${pc}%</b></div>` : ''}
+        ${tasks.length ? `<div class="table-wrap"><table><thead><tr><th></th><th>Công việc</th><th>Hạn chót</th><th>Trạng thái</th><th></th></tr></thead><tbody>${tasks.map(taskRow).join('')}</tbody></table></div>`
+          : `<div class="muted" style="font-size:13px;margin-top:10px">${all.length ? 'Đã hoàn thành toàn bộ công việc.' : 'Chưa được giao công việc nào – gán PIC ở tab Checklist hoặc ở mục "Chưa có PIC" bên dưới.'}</div>`}
+        ${qs.length ? `<div class="pic-sub">Đầu mục cần xác nhận (${qs.length})</div><div class="list">${qs.map((c) => qItem(c)).join('')}</div>` : ''}
+      </section>`;
+    };
+
+    const freeTasks = p.tasks.filter((x) => !x.pic && x.status !== 'done').sort(byDue);
+    const freeQs = p.contractor.filter((c) => !c.owner);
+    return `
+      <div class="toolbar">
+        <div class="search">${ICON.search}<input class="input" type="search" data-filter="picQ" value="${esc(filters.picQ || '')}" placeholder="Tìm PIC…" aria-label="Tìm PIC"></div>
+        <label class="check" style="font-size:13px"><input type="checkbox" data-filter="hideDone" ${hideDone ? 'checked' : ''}> Ẩn việc đã hoàn thành</label>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" data-action="add-contractor">${ICON.plus} Đầu mục cần xác nhận</button>
+        <button class="btn btn-primary" data-action="add-person">${ICON.plus} Thêm PIC</button>
+      </div>
+      ${(freeTasks.length || freeQs.length) && !q ? `<section class="card pic-card unassigned">
+        <div class="pic-head"><div class="avatar warn" aria-hidden="true">?</div><div style="flex:1"><h3>Chưa có PIC</h3><div class="li-sub">Chọn người phụ trách cho từng việc</div></div><span class="badge b-nopic">${freeTasks.length + freeQs.length}</span></div>
+        <div class="list" style="margin-top:8px">${freeTasks.map((x) => `<div class="list-item"><div class="li-main"><div class="li-title" style="font-size:13px">${esc(x.title)}</div><div class="li-sub">${esc(x.group || '')} · Hạn ${fmtDate(x.due)}</div>${allNames.length ? assignSel('assign-pic', x.id) : ''}</div></div>`).join('')}
+          ${freeQs.map((c) => qItem(c, allNames.length ? assignSel('assign-owner', c.id) : '')).join('')}</div>
+        ${!allNames.length ? '<div class="muted" style="font-size:12.5px;margin-top:8px">Bấm "Thêm PIC" để tạo danh sách người phụ trách trước.</div>' : ''}
+      </section>` : ''}
+      ${names.length ? `<div class="grid">${names.map(card).join('')}</div>` : `<div class="card">${emptyState(q ? 'Không tìm thấy PIC' : 'Chưa có PIC', 'Bấm "Thêm PIC" để thêm người phụ trách, rồi gán vào từng công việc.')}</div>`}`;
+  }
+
   const personFields = [
     { name: 'name', label: 'Họ tên', required: true },
     { name: 'role', label: 'Vai trò / Bộ phận' },
@@ -1157,16 +1232,22 @@
       case 'add-person':
       case 'edit-person': {
         const m = id ? findIn(p.people, id) : null;
-        const oldName = m && m.name;
+        const oldName = (m && m.name) || el.dataset.name || '';
+        // Đổi tên PIC thì cập nhật luôn ở mọi việc / đầu mục đang gán tên cũ
+        const rename = (s, to) => splitPics(s).map((n) => (n.toLowerCase() === oldName.toLowerCase() ? to : n)).join(' + ');
         openForm({
-          title: m ? 'Sửa nhân sự' : 'Thêm nhân sự', fields: personFields, data: m || {},
+          title: m ? 'Thông tin PIC' : 'Thêm PIC', fields: personFields, data: m || (el.dataset.name ? { name: el.dataset.name } : {}),
           onSubmit: (v) => {
-            if (m) {
-              Object.assign(m, v);
-              if (oldName && oldName !== v.name) p.tasks.forEach((x) => { if (x.pic === oldName) x.pic = v.name; });
-            } else p.people.push(Object.assign({ id: uid('u') }, v));
-            logp(p, (m ? 'Sửa nhân sự: ' : 'Thêm nhân sự: ') + v.name); save('Đã lưu'); render();
+            if (m) Object.assign(m, v); else p.people.push(Object.assign({ id: uid('u') }, v));
+            if (oldName && oldName !== v.name) {
+              p.tasks.forEach((x) => { if (hasPic(x.pic, oldName)) x.pic = rename(x.pic, v.name); });
+              p.contractor.forEach((x) => { if (hasPic(x.owner, oldName)) x.owner = rename(x.owner, v.name); });
+            }
+            logp(p, (m ? 'Sửa PIC: ' : 'Thêm PIC: ') + v.name); save('Đã lưu'); render();
           },
+          onDelete: m ? async () => {
+            if (await confirmDialog(`Xóa thông tin liên hệ của ${m.name}? Các việc đã gán vẫn giữ tên PIC.`)) { removeFrom(p.people, m.id); save('Đã xóa'); render(); }
+          } : null,
         });
         break;
       }
@@ -1184,15 +1265,18 @@
     const el = e.target, p = proj();
     if (el.id === 'importFile') { if (el.files[0]) importJson(el.files[0]); el.value = ''; return; }
     if (el.dataset.filter && el.tagName === 'SELECT') { filters[el.dataset.filter] = el.value; render(); return; }
+    if (el.dataset.filter && el.type === 'checkbox') { filters[el.dataset.filter] = el.checked; render(); return; }
+    if (el.dataset.action === 'assign-owner' && el.value) { const c = findIn(p.contractor, el.dataset.id); c.owner = el.value; logp(p, `Gán PIC ${c.owner}: ${c.question.slice(0, 60)}`); save('Đã gán PIC'); render(); return; }
     if (el.dataset.action === 'task-status') { const x = findIn(p.tasks, el.dataset.id); x.status = el.value; logp(p, `${x.title}: ${TASK_STATUS[x.status]}`); save(); render(); }
     if (el.dataset.action === 'assign-pic' && el.value) { const x = findIn(p.tasks, el.dataset.id); x.pic = el.value; logp(p, `Gán PIC ${x.pic}: ${x.title}`); save('Đã gán PIC'); render(); }
   });
   document.addEventListener('input', (e) => {
     const el = e.target;
     if (el.id === 'projectSearch') renderSidebar();
-    if (el.dataset.filter === 'q') {
-      filters.q = el.value; const pos = el.selectionStart; render();
-      const ni = document.querySelector('[data-filter="q"]'); if (ni) { ni.focus(); ni.setSelectionRange(pos, pos); }
+    const key = el.dataset.filter;
+    if (key && el.tagName === 'INPUT' && el.type !== 'checkbox') {
+      filters[key] = el.value; const pos = el.selectionStart; render();
+      const ni = document.querySelector(`[data-filter="${key}"]`); if (ni) { ni.focus(); ni.setSelectionRange(pos, pos); }
     }
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modalClose) modalClose(); });
