@@ -439,6 +439,7 @@
           <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
             <button class="btn btn-sm btn-ghost" data-action="edit-project">${ICON.edit} Sửa thông tin</button>
             <button class="btn btn-sm btn-ghost" data-action="duplicate-project">${ICON.copy} Nhân bản làm mẫu</button>
+            ${db.projects.length > 1 ? `<button class="btn btn-sm btn-ghost" data-action="merge-project">${ICON.plus} Gộp với dự án khác</button>` : ''}
             <button class="btn btn-sm btn-ghost" data-action="export-project">${ICON.download} Xuất JSON</button>
             <button class="btn btn-sm btn-ghost" data-action="delete-project">${ICON.trash} Xóa</button>
           </div>
@@ -853,9 +854,11 @@
       const ph = cur && cur.t.photos.find((x) => x.id === d.dataset.delPhoto);
       if (!ph) return;
       d.disabled = true;
-      let res = { status: 0 };
-      try { res = await api('DELETE', { url: ph.url }, UPLOAD_URL); } catch (err) { /* mạng lỗi */ }
       removeFrom(cur.t.photos, ph.id);
+      let res = { status: 200 };
+      if (!photoInUse(ph.url)) {
+        try { res = await api('DELETE', { url: ph.url }, UPLOAD_URL); } catch (err) { res = { status: 0 }; }
+      }
       logp(cur.p, 'Xóa 1 ảnh: ' + cur.t.title);
       save(res.status === 200 ? 'Đã xóa ảnh' : 'Đã gỡ ảnh khỏi đầu việc (chưa xóa được file trên máy chủ)');
       render(); draw();
@@ -894,6 +897,67 @@
     draw();
     document.body.appendChild(el);
   }
+
+  // ---------- Gộp dự án (tạo dự án mới, giữ nguyên dự án gốc) ----------
+  function mergeIntoNew(list, name) {
+    const copy = (x) => JSON.parse(JSON.stringify(x));
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const first = list[0];
+    const m = {
+      id: uid('p'), name, code: '', location: '', manager: '', status: first.status,
+      startDate: '', endDate: '', description: '', createdAt: new Date().toISOString(),
+      milestones: [], tasks: [], zones: [], gates: [], trainings: [], contractor: [], people: [], log: [],
+    };
+    list.forEach((s) => {
+      ['code', 'location', 'manager'].forEach((k) => { if (!m[k] && s[k]) m[k] = s[k]; });
+      if (s.startDate && (!m.startDate || s.startDate < m.startDate)) m.startDate = s.startDate;
+      if (s.endDate && (!m.endDate || s.endDate > m.endDate)) m.endDate = s.endDate;
+      if (s.description) m.description = [m.description, s.description].filter(Boolean).join(' ');
+      s.tasks.forEach((t) => { const c = copy(t); c.id = uid('t'); (c.photos || []).forEach((ph) => { ph.id = uid('ph'); }); m.tasks.push(c); });
+      s.milestones.forEach((x) => { if (!m.milestones.some((y) => norm(y.title) === norm(x.title) && y.date === x.date)) m.milestones.push(Object.assign(copy(x), { id: uid('m') })); });
+      s.zones.forEach((x) => { if (!m.zones.some((y) => norm(y.name) === norm(x.name))) m.zones.push(Object.assign(copy(x), { id: uid('z') })); });
+      s.gates.forEach((g) => {
+        const t = m.gates.find((y) => norm(y.name) === norm(g.name));
+        if (!t) { m.gates.push(Object.assign(copy(g), { id: uid('g') })); return; }
+        if (!t.width && g.width) t.width = g.width;
+        if (g.note && !(t.note || '').includes(g.note)) t.note = [t.note, g.note].filter(Boolean).join(' · ');
+        t.inUse = t.inUse || g.inUse;
+      });
+      s.trainings.forEach((x) => m.trainings.push(Object.assign(copy(x), { id: uid('tr') })));
+      s.contractor.forEach((x) => m.contractor.push(Object.assign(copy(x), { id: uid('c') })));
+      s.people.forEach((x) => { if (!m.people.some((y) => norm(y.name) === norm(x.name))) m.people.push(Object.assign(copy(x), { id: uid('u') })); });
+      s.log.forEach((x) => m.log.push(Object.assign(copy(x), { text: `[${s.name}] ${x.text}` })));
+    });
+    m.log.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+    logp(m, 'Gộp từ: ' + list.map((s) => `"${s.name}"`).join(', '));
+    return m;
+  }
+  function openMerge(p) {
+    const others = sortedProjects().filter((x) => x.id !== p.id);
+    openForm({
+      title: 'Gộp dự án',
+      submitLabel: 'Gộp thành dự án mới',
+      data: { name: p.name, keep: true },
+      fields: [
+        { name: 'name', label: 'Tên dự án sau khi gộp', required: true, full: true },
+        ...others.map((o) => ({ name: 'src_' + o.id, label: `Gộp kèm: ${o.name} (${o.tasks.length} việc)`, type: 'checkbox', full: true })),
+        { name: 'keep', label: 'Giữ lại các dự án gốc (khuyến nghị – không mất thông tin)', type: 'checkbox', full: true },
+      ],
+      onSubmit: async (v) => {
+        const picked = others.filter((o) => v['src_' + o.id]);
+        if (!picked.length) { toast('Hãy chọn ít nhất 1 dự án để gộp kèm', true); return; }
+        const list = [p, ...picked];
+        if (!v.keep && !(await confirmDialog(`Sau khi gộp sẽ xóa ${list.length} dự án gốc. Tiếp tục?`, 'Gộp và xóa'))) return;
+        const merged = mergeIntoNew(list, v.name);
+        if (!v.keep) db.projects = db.projects.filter((x) => !list.includes(x));
+        db.projects.push(merged);
+        save(`Đã gộp ${list.length} dự án thành "${merged.name}"`);
+        go('#/p/' + merged.id);
+      },
+    });
+  }
+  // Ảnh có thể được dùng chung bởi nhiều dự án sau khi gộp: chỉ xóa file khi không còn ai dùng
+  const photoInUse = (url) => db.projects.some((p) => p.tasks.some((t) => (t.photos || []).some((ph) => ph.url === url)));
 
   // ---------- Project forms ----------
   const projectFields = [
@@ -993,6 +1057,7 @@
         db.projects.push(c); save('Đã nhân bản dự án'); go('#/p/' + c.id);
         break;
       }
+      case 'merge-project': openMerge(p); break;
       case 'export-project': download(slug(p.name) + '.json', JSON.stringify({ version: 1, project: p }, null, 2), 'application/json'); break;
       case 'export-csv': exportCsv(p); break;
 
@@ -1111,8 +1176,8 @@
   async function deleteTask(p, x) {
     const n = (x.photos || []).length;
     if (await confirmDialog(`Xóa công việc "${x.title}"?${n ? ` Kèm ${n} ảnh tiến độ.` : ''}`)) {
-      (x.photos || []).forEach((ph) => api('DELETE', { url: ph.url }, UPLOAD_URL).catch(() => {}));
-      removeFrom(p.tasks, x.id); logp(p, 'Xóa việc: ' + x.title); save('Đã xóa'); render(); }
+      removeFrom(p.tasks, x.id);
+      (x.photos || []).forEach((ph) => { if (!photoInUse(ph.url)) api('DELETE', { url: ph.url }, UPLOAD_URL).catch(() => {}); }); logp(p, 'Xóa việc: ' + x.title); save('Đã xóa'); render(); }
   }
 
   document.addEventListener('change', (e) => {
