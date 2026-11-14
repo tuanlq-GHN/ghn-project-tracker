@@ -566,7 +566,7 @@
   function tabZones(p) {
     const cnt = (st) => p.zones.filter((z) => z.status === st).length;
     return `
-      <div class="rule-banner">${ICON.lock}<div><b>Quy định:</b> Zone nào đã lắp Tele thì <b>không cho phép nhà thầu vào khu vực đó nữa</b>. Lắp Tele từ <b>18/12</b>, thời gian thi công khoảng 2 tuần. Bấm vào từng zone để cập nhật trạng thái.</div></div>
+      ${p.zones.length ? `<div class="rule-banner">${ICON.lock}<div><b>Quy định:</b> Zone nào đã lắp Tele thì <b>không cho phép nhà thầu vào khu vực đó nữa</b>. Bấm vào từng zone để cập nhật trạng thái.</div></div>` : ''}
       <div class="grid cols-2">
         <div class="card">
           <div class="card-head"><h3>Layout Kho – ${p.zones.length} zone</h3><span class="spacer"></span>
