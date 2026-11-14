@@ -29,13 +29,15 @@ module.exports = async function handler(req, res) {
       const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
       const isPng = buf[0] === 0x89 && buf[1] === 0x50;
       const isWebp = buf.slice(8, 12).toString() === 'WEBP';
-      if (!isJpeg && !isPng && !isWebp) return res.status(415).json({ error: 'Định dạng ảnh không hỗ trợ' });
-      const ext = isJpeg ? 'jpg' : isPng ? 'png' : 'webp';
+      const isPdf = buf.slice(0, 5).toString() === '%PDF-';
+      if (!isJpeg && !isPng && !isWebp && !isPdf) return res.status(415).json({ error: 'Định dạng không hỗ trợ (chỉ nhận JPG, PNG, WebP, PDF)' });
+      const ext = isJpeg ? 'jpg' : isPng ? 'png' : isWebp ? 'webp' : 'pdf';
+      const type = isPdf ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
       const path = `ghn-pt/${safe(body.projectId)}/${safe(body.taskId)}/${Date.now()}.${ext}`;
       const blob = await put(path, buf, {
         access: 'public',
-        contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        contentType: type,
         addRandomSuffix: true,
       });
       return res.status(200).json({ url: blob.url });

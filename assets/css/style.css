@@ -453,6 +453,18 @@ td.chk input { width: 18px; height: 18px; accent-color: var(--accent); cursor: p
 .avatar.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .pic-sub { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); margin: 16px 0 4px; }
 
+/* ---------- Layout ---------- */
+.layout-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+.layout-card { margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.layout-img { display: block; width: 100%; padding: 0; border: 0; cursor: zoom-in; background: #fff; aspect-ratio: 16 / 10; }
+.layout-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.layout-pdf { aspect-ratio: 16 / 10; background: #fff; }
+.layout-pdf iframe { width: 100%; height: 100%; border: 0; display: block; }
+.layout-card figcaption { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); }
+.layout-title { font-weight: 600; }
+.layout-card .photo-meta a.btn { text-decoration: none; }
+@media (max-width: 560px) { .layout-grid { grid-template-columns: minmax(0, 1fr); } }
+
 /* ---------- Ảnh tiến độ ---------- */
 .modal.lg { max-width: 940px; }
 .thumbs { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }

@@ -60,7 +60,7 @@
   }
   function normalize(d) {
     d.projects.forEach((p) => {
-      ['milestones', 'tasks', 'zones', 'gates', 'trainings', 'contractor', 'people', 'log'].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; });
+      ['milestones', 'tasks', 'zones', 'gates', 'trainings', 'contractor', 'people', 'log', 'layouts'].forEach((k) => { if (!Array.isArray(p[k])) p[k] = []; });
       if (!p.id) p.id = uid('p');
       p.tasks.forEach((t) => { if (!Array.isArray(t.photos)) t.photos = []; });
     });
@@ -411,18 +411,18 @@
 
   // ---------- Project ----------
   const TABS = [
-    ['overview', 'Tổng quan'], ['tasks', 'Checklist công việc'], ['pic', 'PIC'],
+    ['overview', 'Tổng quan'], ['tasks', 'Checklist công việc'], ['layout', 'Layout'], ['pic', 'PIC'],
     ['training', 'Đào tạo'], ['timeline', 'Timeline'],
   ];
   const OLD_TABS = { team: 'pic', contractor: 'pic', zones: 'overview' }; // link cũ vẫn mở được
   function renderProject(p) {
     const s = stats(p);
-    const counts = { tasks: p.tasks.length, pic: picNames(p).length, training: p.trainings.length };
+    const counts = { tasks: p.tasks.length, layout: p.layouts.length, pic: picNames(p).length, training: p.trainings.length };
     const want = OLD_TABS[route.tab] || route.tab;
     const tab = TABS.some((t) => t[0] === want) ? want : 'overview';
     const daysLeft = p.endDate ? daysBetween(todayStr(), p.endDate) : null;
     const body = {
-      overview: tabOverview, tasks: tabTasks, pic: tabPic, training: tabTraining, timeline: tabTimeline,
+      overview: tabOverview, tasks: tabTasks, layout: tabLayout, pic: tabPic, training: tabTraining, timeline: tabTimeline,
     }[tab](p, s);
     return `
       <section class="hero"><div class="hero-row">
@@ -944,8 +944,13 @@
   function lightbox(pid, tid, photoId) {
     const cur = findTask(pid, tid);
     if (!cur || !cur.t.photos.length) return;
-    const t = cur.t, list = t.photos.slice().reverse();
-    let i = Math.max(0, list.findIndex((x) => x.id === photoId));
+    const list = cur.t.photos.slice().reverse();
+    showLightbox(list.map((ph) => ({ url: ph.url, title: cur.t.title, caption: ph.caption, at: ph.at })), Math.max(0, list.findIndex((x) => x.id === photoId)));
+  }
+  // Trình xem ảnh toàn màn hình dùng chung (ảnh tiến độ, layout)
+  function showLightbox(list, start) {
+    if (!list.length) return;
+    let i = start || 0;
     const el = document.createElement('div');
     el.className = 'lightbox';
     el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Xem ảnh');
@@ -953,8 +958,8 @@
       const ph = list[i];
       el.innerHTML = `<button class="icon-btn lb-close" aria-label="Đóng">${ICON.close}</button>
         ${list.length > 1 ? '<button class="lb-nav prev" aria-label="Ảnh trước">‹</button><button class="lb-nav next" aria-label="Ảnh sau">›</button>' : ''}
-        <figure><img src="${esc(ph.url)}" alt="${esc(ph.caption || t.title)}">
-          <figcaption><b>${esc(t.title)}</b>${ph.caption ? ' – ' + esc(ph.caption) : ''}<span class="tnum">${fmtTime(ph.at)} · ${i + 1}/${list.length}</span></figcaption></figure>`;
+        <figure><img src="${esc(ph.url)}" alt="${esc(ph.caption || ph.title)}">
+          <figcaption><b>${esc(ph.title)}</b>${ph.caption ? ' – ' + esc(ph.caption) : ''}<span class="tnum">${ph.at ? fmtTime(ph.at) + ' · ' : ''}${i + 1}/${list.length} · <a href="${esc(ph.url)}" target="_blank" rel="noopener">Mở ảnh gốc</a></span></figcaption></figure>`;
     };
     const step = (n) => { i = (i + n + list.length) % list.length; draw(); };
     const closeLb = () => { el.remove(); window.removeEventListener('keydown', onKey, true); };
@@ -981,7 +986,7 @@
     const m = {
       id: uid('p'), name, code: '', location: '', manager: '', status: first.status,
       startDate: '', endDate: '', description: '', createdAt: new Date().toISOString(),
-      milestones: [], tasks: [], zones: [], gates: [], trainings: [], contractor: [], people: [], log: [],
+      milestones: [], tasks: [], zones: [], gates: [], trainings: [], contractor: [], people: [], log: [], layouts: [],
     };
     list.forEach((s) => {
       ['code', 'location', 'manager'].forEach((k) => { if (!m[k] && s[k]) m[k] = s[k]; });
@@ -1001,6 +1006,7 @@
       s.trainings.forEach((x) => m.trainings.push(Object.assign(copy(x), { id: uid('tr') })));
       s.contractor.forEach((x) => m.contractor.push(Object.assign(copy(x), { id: uid('c') })));
       s.people.forEach((x) => { if (!m.people.some((y) => norm(y.name) === norm(x.name))) m.people.push(Object.assign(copy(x), { id: uid('u') })); });
+      (s.layouts || []).forEach((x) => { if (!m.layouts.some((y) => y.url === x.url)) m.layouts.push(Object.assign(copy(x), { id: uid('l') })); });
       s.log.forEach((x) => m.log.push(Object.assign(copy(x), { text: `[${s.name}] ${x.text}` })));
     });
     m.log.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
@@ -1032,7 +1038,68 @@
     });
   }
   // Ảnh có thể được dùng chung bởi nhiều dự án sau khi gộp: chỉ xóa file khi không còn ai dùng
-  const photoInUse = (url) => db.projects.some((p) => p.tasks.some((t) => (t.photos || []).some((ph) => ph.url === url)));
+  const photoInUse = (url) => db.projects.some((p) => p.layouts.some((l) => l.url === url) || p.tasks.some((t) => (t.photos || []).some((ph) => ph.url === url)));
+
+  // ---------- Layout: bản vẽ mặt bằng (ảnh hoặc PDF) ----------
+  const isPdf = (x) => x.type === 'pdf';
+  function tabLayout(p) {
+    const list = p.layouts.slice().sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+    return `
+      <div class="toolbar">
+        <div class="muted" style="font-size:13px">Bản vẽ layout vận hành, mặt bằng bàn giao. Nhận ảnh (JPG, PNG, WebP) và PDF, tối đa 3MB mỗi file.</div>
+        <span class="spacer"></span>
+        <span class="up-status" data-layout-status style="margin:0"></span>
+        ${cloud.enabled ? `<label class="btn btn-primary" style="cursor:pointer">${ICON.plus} Tải layout lên<input type="file" accept="image/*,application/pdf" multiple hidden data-layout-input></label>` : ''}
+      </div>
+      ${cloud.enabled ? '' : `<div class="rule-banner warn">${ICON.alert}<div>Tải layout chỉ dùng được trên link dùng chung (Vercel).</div></div>`}
+      ${list.length ? `<div class="layout-grid">${list.map((l) => `
+        <figure class="card layout-card">
+          ${isPdf(l)
+            ? `<div class="layout-pdf"><iframe src="${esc(l.url)}#view=FitH" title="${esc(l.title)}" loading="lazy"></iframe></div>`
+            : `<button class="layout-img" data-action="view-layout" data-id="${l.id}" aria-label="Xem layout lớn"><img src="${esc(l.url)}" alt="${esc(l.title)}" loading="lazy"></button>`}
+          <figcaption>
+            <input class="input layout-title" data-layout-title="${l.id}" value="${esc(l.title)}" aria-label="Tên layout" ${cloud.enabled ? '' : 'disabled'}>
+            <div class="photo-meta">
+              <span class="tnum">${isPdf(l) ? 'PDF · ' : ''}${fmtTime(l.at)}</span>
+              <span style="display:flex;gap:6px">
+                <a class="btn btn-sm" href="${esc(l.url)}" target="_blank" rel="noopener">Mở ${isPdf(l) ? 'PDF' : 'ảnh gốc'}</a>
+                ${cloud.enabled ? `<button class="btn btn-sm btn-danger-ghost" data-action="delete-layout" data-id="${l.id}">${ICON.trash} Xóa</button>` : ''}
+              </span>
+            </div>
+          </figcaption>
+        </figure>`).join('')}</div>`
+      : `<div class="card">${emptyState('Chưa có layout', 'Bấm "Tải layout lên" để thêm bản vẽ mặt bằng (ảnh hoặc PDF).')}</div>`}`;
+  }
+  // Layout cần giữ nét: không nén nếu file ≤ 2.5MB, ảnh lớn hơn thì thu về 3000px
+  async function prepareLayoutFile(f) {
+    if (f.type === 'application/pdf') {
+      if (f.size > 3 * 1024 * 1024) throw new Error('PDF lớn hơn 3MB');
+      return f;
+    }
+    if (/^image\/(jpeg|png|webp)$/.test(f.type) && f.size <= 2.5 * 1024 * 1024) return f;
+    return compressImage(f, 3000, 0.9);
+  }
+  async function uploadLayouts(p, files) {
+    const status = (s) => { const el = document.querySelector('[data-layout-status]'); if (el) el.textContent = s; };
+    let ok = 0;
+    for (let k = 0; k < files.length; k++) {
+      const f = files[k];
+      status(`Đang tải ${k + 1}/${files.length}…`);
+      try {
+        const blob = await prepareLayoutFile(f);
+        const { status: st, json } = await api('POST', { projectId: p.id, taskId: 'layout', data: await blobToBase64(blob) }, UPLOAD_URL);
+        if (st === 401) { askPasscode(true); return; }
+        if (st !== 200 || !json || !json.url) throw new Error((json && json.error) || 'lỗi máy chủ (HTTP ' + st + ')');
+        const cur = db.projects.find((x) => x.id === p.id);
+        if (!cur) return;
+        cur.layouts.push({ id: uid('l'), url: json.url, type: f.type === 'application/pdf' ? 'pdf' : 'image', title: f.name.replace(/\.[^.]+$/, ''), at: new Date().toISOString() });
+        ok++;
+      } catch (e) { toast(`${f.name}: ${e.message}`, true); }
+    }
+    status('');
+    const cur = db.projects.find((x) => x.id === p.id);
+    if (ok && cur) { logp(cur, `Thêm ${ok} layout`); save(`Đã tải lên ${ok} layout`); render(); }
+  }
 
   // ---------- Project forms ----------
   const projectFields = [
@@ -1133,6 +1200,24 @@
         break;
       }
       case 'merge-project': openMerge(p); break;
+      case 'view-layout': {
+        const imgs = p.layouts.filter((l) => !isPdf(l)).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+        showLightbox(imgs.map((l) => ({ url: l.url, title: l.title, at: l.at })), Math.max(0, imgs.findIndex((l) => l.id === id)));
+        break;
+      }
+      case 'delete-layout': {
+        if (!el.dataset.armed) { // bấm 2 lần để xóa
+          el.dataset.armed = '1'; el.innerHTML = `${ICON.trash} Bấm lần nữa để xóa`;
+          setTimeout(() => { if (el.isConnected) { delete el.dataset.armed; el.innerHTML = `${ICON.trash} Xóa`; } }, 3000);
+          break;
+        }
+        const l = findIn(p.layouts, id);
+        if (!l) break;
+        removeFrom(p.layouts, id);
+        if (!photoInUse(l.url)) api('DELETE', { url: l.url }, UPLOAD_URL).catch(() => {});
+        logp(p, 'Xóa layout: ' + l.title); save('Đã xóa layout'); render();
+        break;
+      }
       case 'export-project': download(slug(p.name) + '.json', JSON.stringify({ version: 1, project: p }, null, 2), 'application/json'); break;
       case 'export-csv': exportCsv(p); break;
 
@@ -1265,6 +1350,8 @@
     const el = e.target, p = proj();
     if (el.id === 'importFile') { if (el.files[0]) importJson(el.files[0]); el.value = ''; return; }
     if (el.dataset.filter && el.tagName === 'SELECT') { filters[el.dataset.filter] = el.value; render(); return; }
+    if (el.matches('[data-layout-input]')) { const files = [...el.files]; el.value = ''; if (files.length) uploadLayouts(p, files); return; }
+    if (el.dataset.layoutTitle) { const l = findIn(p.layouts, el.dataset.layoutTitle); if (l && el.value.trim()) { l.title = el.value.trim(); save('Đã đổi tên layout'); } return; }
     if (el.dataset.filter && el.type === 'checkbox') { filters[el.dataset.filter] = el.checked; render(); return; }
     if (el.dataset.action === 'assign-owner' && el.value) { const c = findIn(p.contractor, el.dataset.id); c.owner = el.value; logp(p, `Gán PIC ${c.owner}: ${c.question.slice(0, 60)}`); save('Đã gán PIC'); render(); return; }
     if (el.dataset.action === 'task-status') { const x = findIn(p.tasks, el.dataset.id); x.status = el.value; logp(p, `${x.title}: ${TASK_STATUS[x.status]}`); save(); render(); }
