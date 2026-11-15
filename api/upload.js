@@ -5,6 +5,13 @@
 const { put, del } = require('@vercel/blob');
 
 const MAX_BYTES = 3 * 1024 * 1024; // 3MB sau khi nén
+
+// Vercel có thể đặt tên biến kèm tiền tố tuỳ chọn (VD: GHN_PHOTOS_READ_WRITE_TOKEN)
+function blobToken() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return process.env.BLOB_READ_WRITE_TOKEN;
+  const hit = Object.entries(process.env).find(([k, v]) => /READ_WRITE_TOKEN$/.test(k) && String(v).startsWith('vercel_blob_rw_'));
+  return hit ? hit[1] : '';
+}
 const safe = (s) => String(s || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'x';
 
 module.exports = async function handler(req, res) {
@@ -14,7 +21,8 @@ module.exports = async function handler(req, res) {
   if (pass && req.headers['x-passcode'] !== pass) {
     return res.status(401).json({ error: 'Sai hoặc thiếu mã truy cập' });
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  const token = blobToken();
+  if (!token) {
     return res.status(503).json({ error: 'Chưa kết nối kho ảnh (Vercel Blob) cho dự án' });
   }
 
@@ -39,6 +47,7 @@ module.exports = async function handler(req, res) {
         access: 'public',
         contentType: type,
         addRandomSuffix: true,
+        token,
       });
       return res.status(200).json({ url: blob.url });
     }
@@ -50,7 +59,7 @@ module.exports = async function handler(req, res) {
       if (!host.endsWith('.blob.vercel-storage.com') || !url.includes('/ghn-pt/')) {
         return res.status(400).json({ error: 'Đường dẫn ảnh không hợp lệ' });
       }
-      await del(url);
+      await del(url, { token });
       return res.status(200).json({ ok: true });
     }
 
