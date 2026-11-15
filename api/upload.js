@@ -1,5 +1,6 @@
 // Vercel Serverless Function: tải ảnh tiến độ lên Vercel Blob và xóa ảnh.
-// Cần: Vercel → Storage → Blob (Public) kết nối vào dự án → tự có biến BLOB_READ_WRITE_TOKEN.
+// Cần: Vercel → Storage → Blob (Public) kết nối vào dự án. Kho cũ dùng BLOB_READ_WRITE_TOKEN,
+// kho mới dùng BLOB_STORE_ID + OIDC (thư viện @vercel/blob ≥ 2.x tự xử lý).
 // Ảnh được nén sẵn trên trình duyệt (≤ 1600px, JPEG) trước khi gửi lên.
 
 const { put, del } = require('@vercel/blob');
@@ -22,7 +23,7 @@ module.exports = async function handler(req, res) {
     return res.status(401).json({ error: 'Sai hoặc thiếu mã truy cập' });
   }
   const token = blobToken();
-  if (!token) {
+  if (!token && !process.env.BLOB_STORE_ID) {
     return res.status(503).json({ error: 'Chưa kết nối kho ảnh (Vercel Blob) cho dự án' });
   }
 
@@ -47,7 +48,7 @@ module.exports = async function handler(req, res) {
         access: 'public',
         contentType: type,
         addRandomSuffix: true,
-        token,
+        ...(token ? { token } : {}),
       });
       return res.status(200).json({ url: blob.url });
     }
@@ -59,7 +60,7 @@ module.exports = async function handler(req, res) {
       if (!host.endsWith('.blob.vercel-storage.com') || !url.includes('/ghn-pt/')) {
         return res.status(400).json({ error: 'Đường dẫn ảnh không hợp lệ' });
       }
-      await del(url, { token });
+      await del(url, token ? { token } : undefined);
       return res.status(200).json({ ok: true });
     }
 
